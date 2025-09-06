@@ -2,7 +2,7 @@
 # Permanently disable IPv6 on Debian via GRUB
 
 # Backup the original GRUB config
-sudo cp /etc/default/grub /etc/default/grub.bak
+sudo cp --no-clobber /etc/default/grub /etc/default/grub.bak
 
 # Add ipv6.disable=1 kernel parameter if not already present
 sudo sed -i '/^GRUB_CMDLINE_LINUX="/{
