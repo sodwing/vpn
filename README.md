@@ -2,6 +2,11 @@
 
 An easy and GUI-based way to set up a WireGuard VPN on a server is through **wg-easy**. However, this guide will walk you through the manual setup process, which is straightforward and effective.
 
+### Prerequisites
+- A Linux server (root or sudo access).
+- At least one client (Linux, Windows, macOS, Android, or iOS).
+- Basic terminal knowledge (copy-paste commands is fine)
+
 ### Time to Complete
 - **Pro:** 5 minutes
 - **Intermediate:** 10 minutes
@@ -9,9 +14,7 @@ An easy and GUI-based way to set up a WireGuard VPN on a server is through **wg-
 - **Noob:** 1 day
 - Anything longer than that, and you might need to reassess your approach!
 
----
-
-## Steps Overview
+### Steps Overview
 1. Self-host WireGuard VPN on a server.
 2. Set up the first WireGuard VPN client.
 3. Configure firewall rules on the peer side.
@@ -20,53 +23,38 @@ An easy and GUI-based way to set up a WireGuard VPN on a server is through **wg-
 ### Not Yet Figured Out
 1. Self-host DNS provider.
 
+### Note
+> In this guide, some commands are intended for Debian/Ubuntu (version 11 and above). If your operating system differs, please make the necessary adjustments.
+
 ---
 
-## Server-Side Setup
-
-### Step 1: Update System
+### Step 1: Install WireGuard
+On both server and client(s):
 ```bash
-sudo apt update && sudo apt upgrade -y
+sudo apt update && sudo apt install wireguard -y
 ```
 
-### Step 2: Install WireGuard
+### Step 2: Generate WireGuard Keys
+On both server and client(s):
 ```bash
-sudo apt install wireguard -y
+wg genkey | sudo tee /etc/wireguard/private.key | wg pubkey | sudo tee /etc/wireguard/public.key
+sudo chmod 600 /etc/wireguard/private.key # restrict access
 ```
+This will generate WireGuard private and public keys in /etc/wireguard and set the private key’s permissions to be readable only by root.
 
-### Step 3: Generate WireGuard Keys
-```bash
-umask 077
-sudo wg genkey | sudo tee /etc/wireguard/server_private.key | wg pubkey | sudo tee /etc/wireguard/server_public.key
-sudo chmod 600 /etc/wireguard/server_private.key # restrict access
-```
-
-### Step 4: Identify Main Network Interface
-Run the following command to identify your main network interface:
-```bash
-ip addr show
-```
-Example interfaces include **enp1s0**, **eth0**, etc.
-
-### Step 5: Create WireGuard Configuration
-Edit the configuration file at `/etc/wireguard/wg0.conf`:
+### Step 3: Server Configuration
+Create `/etc/wireguard/wg0.conf`:
 ```ini
 [Interface]
 Address = 10.0.0.1/24
 ListenPort = 51820
-PrivateKey = <server_private_key>
-PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o <network_interface> -j MASQUERADE
-PostDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o <network_interface> -j MASQUERADE
+PrivateKey = <SERVER_PRIVATE_KEY>
 ```
+- Replace <SERVER_PRIVATE_KEY> with the server's actual WireGuard private key.
+- ListenPort 51820 is the default WireGuard port (you may change it if needed).
+- Address 10.0.0.1/24 is the first address in the sequential client/network plan — assign subsequent clients addresses in order (for example 10.0.0.2, 10.0.0.3, etc.).
 
-### Step 6: Enable IPv4 Forwarding
-Add the following line to enable IPv4 forwarding:
-```bash
-echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p # apply changes
-```
-
-### Step 7: Allow UDP Port
+### Step 5: Allow UDP Port
 Ensure that UDP traffic on port **51820** is allowed. If using a cloud server, refer to their documentation, as each service may differ. Also, check any firewall settings to allow this port.
 
 ### Step 8: Start WireGuard and Check Status
@@ -75,12 +63,6 @@ sudo systemctl start wg-quick@wg0
 systemctl status wg-quick@wg0
 sudo wg show wg0 # to view active interface and peers
 ```
-
-### Automatically Start WireGuard at System Boot (Optional)
-Enable WireGuard to start automatically on system startup.
-```bash
-sudo systemctl enable wg-quick@wg0
-```
 ---
 
 ## First Client Setup
@@ -88,12 +70,11 @@ sudo systemctl enable wg-quick@wg0
 ### Step 1: Update System
 ```bash
 sudo apt update
-sudo apt upgrade
 ```
 
 ### Step 2: Install WireGuard
 ```bash
-sudo apt install wireguard
+sudo apt install wireguard -y
 ```
 
 ### Step 3: Generate WireGuard Keys
@@ -135,3 +116,20 @@ AllowedIPs = 10.0.0.2/32
 ### Step 6: Restart WireGuard Service
 ```bash
 sudo systemctl restart wg-quick
+```
+
+### Enable IPv4 Forwarding (Optional)
+If the client needs to access the public Internet via the server, enable IPv4 forwarding on server side.
+Add these lines to the [Interface] section of the WireGuard config:
+```ini
+# Allow IPv4 forwarding
+PostUp   = sysctl -w net.ipv4.ip_forward=1
+PostDown = sysctl -w net.ipv4.ip_forward=0
+```
+This will enable IPv4 forwarding when WireGuard is up and disable it when WireGuard is down.
+
+### Automatically Start WireGuard at System Boot (Optional)
+Enable WireGuard to start automatically on system startup.
+```bash
+sudo systemctl enable wg-quick@wg0
+```
