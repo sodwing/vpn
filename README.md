@@ -67,7 +67,7 @@ AllowedIPs = 10.0.0.2/32
 To save and close the file in nano, press CTRL+X, then type Y and hit ENTER to confirm your changes.
 
 Interface Section
-- **Address:** In a private network using the IP range 10.0.0.0/24, the first usable IP address (10.0.0.1) is commonly assigned to the server or router, while the subsequent addresses (10.0.0.2, 10.0.0.3, etc.) are typically allocated to client devices. This subnet allows for a total of 256 IP addresses, with 254 usable for hosts.
+- **Address:** In the private subnet 10.0.0.0/24, the server is typically assigned the first usable IP (10.0.0.1), while clients receive subsequent addresses (10.0.0.2, 10.0.0.3, etc.). A /24 subnet contains 256 total addresses, of which 254 are usable by hosts (the .0 network address and .255 broadcast address are reserved).
 - **ListenPort:** 51820 is the default WireGuard port (you may change it if needed).
 - **PrivateKey:** Replace <SERVER_PRIVATE_KEY> with the server's actual WireGuard private key (keep this secret).
 
@@ -87,6 +87,10 @@ If using `iptables`:
 ```
 sudo iptables -A INPUT -p udp --dport 51820 -j ACCEPT
 ```
+If using `nftables`:
+```
+sudo nft add rule inet filter input udp dport 51820 accept
+```
 
 ### Step 5: Start WireGuard and Check Status
 ```bash
@@ -100,28 +104,37 @@ Edit the client configuration file at `/etc/wireguard/wg0.conf`:
 [Interface]
 PrivateKey = <PEER_PRIVATE_KEY>
 Address = 10.0.0.2/24
-DNS = <DNS>
+DNS = <DNS> # optional
 
 [Peer]
 PublicKey = <SERVER_PUBLIC_KEY>
-AllowedIPs = 0.0.0.0/0
+AllowedIPs = 10.0.0.1/32
 Endpoint = <SERVER_IP>:51820
 ```
-Note: You may need to install resolvconf for DNS functionality to work properly.
-- **DNS:** You can use your own or public DNS servers like **1.1.1.1** (Cloudflare), **8.8.8.8** (Google), or **9.9.9.9** (Quad9).
-- **Address:** Set this to **10.0.0.2/24** (the address assigned in the WireGuard server).
-- **PersistentKeepalive:** Add this line in the peer section if the connection breaks:
-```ini
-PersistentKeepalive = 25
+> **Warning:** If you do not specify a DNS server, your DNS requests will use the system's default DNS and may not be secured by the VPN.
+
+Note: If you set a DNS entry in a WireGuard config on Debian/Ubuntu, WireGuard may try to use resolvconf (or systemd-resolved, depending on your setup) and fail to start. To fix this, install resolvconf:
 ```
+sudo apt install resolvconf
+```
+- **DNS:** You can use your own or public DNS servers like **1.1.1.1** (Cloudflare), **8.8.8.8** (Google), or **9.9.9.9** (Quad9).
+- **Address:** Set this to **10.0.0.2/32** (the address assigned in the WireGuard server).
+- **PersistentKeepalive:** Add this line in the peer section if the connection breaks:
+  ```ini
+  PersistentKeepalive = 25
+  ```
 ### Start WireGuard on client and Check Status
 
 ### Test Connection
 On client:
-```bash
+```
 ping 10.0.0.1
 ```
-If successful → your VPN is working
+On server:
+```
+ping 10.0.0.2
+```
+If both succeed → peer-to-peer VPN works
 
 ---
 
@@ -131,13 +144,17 @@ sudo systemctl restart wg-quick@wg0
 ```
 
 ### Enable IPv4 Forwarding (Optional)
-If the client needs to access the public Internet via the server, enable IPv4 forwarding on server side.  
+If the client needs to access the public Internet via the server, enable IPv4 forwarding and NAT on server side.  
 Dedicated VPN server? → The PostUp/PostDown approach is fine (less “attack surface”).
 Add these lines to the [Interface] section of the WireGuard config:
 ```ini
-# Allow IPv4 forwarding
 PostUp   = sysctl -w net.ipv4.ip_forward=1
+PostUp   = nft add table inet nat
+PostUp   = nft add chain inet nat postrouting { type nat hook postrouting priority 100 \; }
+PostUp   = nft add rule inet nat postrouting oif "eth0" masquerade
+
 PostDown = sysctl -w net.ipv4.ip_forward=0
+PostDown = nft delete rule inet nat postrouting oif "eth0" masquerade
 ```
 This will enable IPv4 forwarding when WireGuard is up and disable it when WireGuard is down.  
 
