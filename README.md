@@ -43,60 +43,55 @@ sudo chmod 600 /etc/wireguard/private.key # restrict access
 This will generate WireGuard private and public keys in /etc/wireguard and set the private key’s permissions to be readable only by root.
 
 ### Step 3: Server Configuration
-Create `/etc/wireguard/wg0.conf`:
+Open wireguard config using your prefered text editor. Here I used nano:
+```bash
+sudo nano /etc/wireguard/wg0.conf
+```
+Copy and paste the following in it:
 ```ini
 [Interface]
 Address = 10.0.0.1/24
 ListenPort = 51820
 PrivateKey = <SERVER_PRIVATE_KEY>
-```
-- Replace <SERVER_PRIVATE_KEY> with the server's actual WireGuard private key.
-- ListenPort 51820 is the default WireGuard port (you may change it if needed).
-- Address 10.0.0.1/24 is the first address in the sequential client/network plan — assign subsequent clients addresses in order (for example 10.0.0.2, 10.0.0.3, etc.).
 
-### Step 5: Allow UDP Port
+[Peer]
+PublicKey = <CLIENT_PUBLIC_KEY>
+AllowedIPs = 10.0.0.2/32
+```
+To save and close the file in nano, press CTRL+X, then type Y and hit ENTER to confirm your changes.
+
+Interface Section
+- **Address:** In a private network using the IP range 10.0.0.0/24, the first usable IP address (10.0.0.1) is commonly assigned to the server or router, while the subsequent addresses (10.0.0.2, 10.0.0.3, etc.) are typically allocated to client devices. This subnet allows for a total of 256 IP addresses, with 254 usable for hosts.
+- **ListenPort:** 51820 is the default WireGuard port (you may change it if needed).
+- **PrivateKey:** Replace <SERVER_PRIVATE_KEY> with the server's actual WireGuard private key.
+
+Peer Section
+- **PublicKey:** Replace <CLIENT_PUBLIC_KEY> with the client's actual WireGuard public key.
+- **AllowedIPs:** Assign a private IP address for the peer from the private IP range. If the server is assigned the first address, 10.0.0.1, the next available address for the peer would be 10.0.0.2, obtained by incrementing the server's IP by one.
+
+
+### Step 4: Allow UDP Port
 Ensure that UDP traffic on port **51820** is allowed. If using a cloud server, refer to their documentation, as each service may differ. Also, check any firewall settings to allow this port.
 
-### Step 8: Start WireGuard and Check Status
+### Step 5: Start WireGuard and Check Status
 ```bash
 sudo systemctl start wg-quick@wg0
 systemctl status wg-quick@wg0
 sudo wg show wg0 # to view active interface and peers
 ```
----
 
-## First Client Setup
-
-### Step 1: Update System
-```bash
-sudo apt update
-```
-
-### Step 2: Install WireGuard
-```bash
-sudo apt install wireguard -y
-```
-
-### Step 3: Generate WireGuard Keys
-```bash
-sudo -s
-cd /etc/wireguard
-wg genkey | tee client_private.key | wg pubkey > client_public.key
-exit
-```
-
-### Step 4: Create Client Configuration
+### Step 6: Create Client Configuration
 Edit the client configuration file at `/etc/wireguard/wg0.conf`:
 ```ini
 [Interface]
-PrivateKey = <peer_private_key>
-Address = <vpn_address>
-DNS = <dns>
+PrivateKey = <PEER_PRIVATE_KEY>
+Address = 10.0.0.2/24
+DNS = <DNS>
 
 [Peer]
-PublicKey = <server_public_key>
+PublicKey = <SERVER_PUBLIC_KEY>
 AllowedIPs = 0.0.0.0/0
-Endpoint = <server_public_ip>:51820
+Endpoint = <SERVER_IP>:51820
 ```
 - **DNS:** You can use your own or public DNS servers like **1.1.1.1** (Cloudflare), **8.8.8.8** (Google), or **9.9.9.9** (Quad9).
 - **Address:** Set this to **10.0.0.2/24** (the address assigned in the WireGuard server).
@@ -104,16 +99,18 @@ Endpoint = <server_public_ip>:51820
 ```ini
 PersistentKeepalive = 25
 ```
+### Start WireGuard on client and Check Status
 
-### Step 5: Add Peer on Server Side
-Edit the server configuration file at `/etc/wireguard/wg0.conf`:
-```ini
-[Peer]
-PublicKey = <client_public_key>
-AllowedIPs = 10.0.0.2/32
+### Test Connection
+On client:
+```bash
+ping 10.0.0.1
 ```
+If successful → your VPN is working
 
-### Step 6: Restart WireGuard Service
+---
+
+### Restart WireGuard Service on Config Edit
 ```bash
 sudo systemctl restart wg-quick
 ```
