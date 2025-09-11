@@ -113,12 +113,12 @@ Endpoint = <SERVER_IP>:51820
 ```
 > **Warning:** If you do not specify a DNS server, your DNS requests will use the system's default DNS and may not be secured by the VPN.
 
-Note: If you set a DNS entry in a WireGuard config on Debian/Ubuntu, WireGuard may try to use resolvconf (or systemd-resolved, depending on your setup) and fail to start. To fix this, install resolvconf:
+Note: DNS entries in a WireGuard config are handled by wg-quick, not WireGuard itself. On Debian/Ubuntu, this requires resolvconf (or systemd-resolved). If missing, WireGuard may fail to start. To fix this:
 ```
 sudo apt install resolvconf
 ```
-- **DNS:** You can use your own or public DNS servers like **1.1.1.1** (Cloudflare), **8.8.8.8** (Google), or **9.9.9.9** (Quad9).
-- **Address:** Set this to **10.0.0.2/32** (the address assigned in the WireGuard server).
+- **DNS:** You can use your own or public DNS servers like 1.1.1.1 (Cloudflare), 8.8.8.8 (Google), or 9.9.9.9 (Quad9).
+- **Address:** Set this to 10.0.0.2/32 (the address assigned in the WireGuard server).
 - **PersistentKeepalive:** Add this line in the peer section if the connection breaks:
   ```ini
   PersistentKeepalive = 25
@@ -144,25 +144,35 @@ sudo systemctl restart wg-quick@wg0
 ```
 
 ### Enable IPv4 Forwarding (Optional)
-If the client needs to access the public Internet via the server, enable IPv4 forwarding and NAT on server side.  
-Dedicated VPN server? → The PostUp/PostDown approach is fine (less “attack surface”).
-Add these lines to the [Interface] section of the WireGuard config:
-```ini
+
+Whether you need forwarding depends on how you configure `AllowedIPs` in the client:
+
+* **Peer-to-Peer (`10.0.0.1/32`)** → No forwarding required. Client can only talk to the server’s VPN IP.
+* **LAN-Only (`10.0.0.0/24`)** → No Internet access needed, only other VPN clients. Forwarding is *not* required.
+* **Full Tunnel (`0.0.0.0/0`)** → Client sends all Internet traffic through the server. Forwarding **is required** on the server to route packets out to the Internet.
+
+To enable IPv4 forwarding and NAT automatically when WireGuard starts, add these lines to the `[Interface]` section of the server config (`wg0.conf`):
+
+```
 PostUp   = sysctl -w net.ipv4.ip_forward=1
-PostUp   = nft add table inet nat
-PostUp   = nft add chain inet nat postrouting { type nat hook postrouting priority 100 \; }
+PostUp   = nft list table inet nat >/dev/null 2>&1 || nft add table inet nat
+PostUp   = nft list chain inet nat postrouting >/dev/null 2>&1 || nft add chain inet nat postrouting { type nat hook postrouting priority 100 \; }
 PostUp   = nft add rule inet nat postrouting oif "eth0" masquerade
 
 PostDown = sysctl -w net.ipv4.ip_forward=0
 PostDown = nft delete rule inet nat postrouting oif "eth0" masquerade
 ```
-This will enable IPv4 forwarding when WireGuard is up and disable it when WireGuard is down.  
 
-Multi-purpose server (runs Docker, routing, other VPNs, etc.)? → Better to enable forwarding permanently:
+This enables IPv4 forwarding only while WireGuard is active.
+
+If your server also runs Docker, Kubernetes, or other VPNs, it is safer to enable forwarding permanently instead of toggling it in PostUp/PostDown:
+
 ```
 echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 ```
+
+---
 
 ### Automatically Start WireGuard at System Boot (Optional)
 Enable WireGuard to start automatically on system startup.
@@ -170,8 +180,29 @@ Enable WireGuard to start automatically on system startup.
 sudo systemctl enable wg-quick@wg0
 ```
 
-### ASCII diagram
-This is what it looks like when forwarding is enabled.
+### ASCII Diagrams
+
+**1. Peer-to-Peer Only (`AllowedIPs = 10.0.0.1/32`)**
+Client talks only to the server’s VPN address.
+
+```
+[Client] <--- WireGuard ---> [Server]
+```
+
+**2. LAN-Only (`AllowedIPs = 10.0.0.0/24`)**
+Client can reach all devices inside the VPN subnet.
+
+```
+[Client] <--- WireGuard ---> [Server]
+     |                            |
+     +----> Other VPN Clients <---+
+```
+
+**3. Full Tunnel (`AllowedIPs = 0.0.0.0/0`)**
+All of the client’s traffic (Internet included) goes through the VPN server.
+
 ```
 [Client] <--- WireGuard ---> [Server] ---> Internet
 ```
+
+---
