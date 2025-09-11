@@ -23,8 +23,13 @@ An easy and GUI-based way to set up a WireGuard VPN on a server is through **wg-
 ### Not Yet Figured Out
 1. Self-host DNS provider.
 
-### Note
+---
+
+> **Note for Debian/Ubuntu users:**  
 > In this guide, some commands are intended for Debian/Ubuntu (version 11 and above). If your operating system differs, please make the necessary adjustments.
+
+> **Warning on IPv6 and Privacy:**  
+> This guide focuses on IPv4. If your system also has IPv6, it may leak outside the VPN unless you either disable IPv6 or configure WireGuard to tunnel it (`AllowedIPs = ::/0`). In some cases IPv6 address can uniquely identify your device across networks — a big privacy risk. For strict privacy, ensure IPv6 is handled explicitly.
 
 ---
 
@@ -40,7 +45,7 @@ Generate private key with restrictive permissions
 ```bash
 (umask 077 && wg genkey | sudo tee /etc/wireguard/private.key > /dev/null)
 ```
-Generate public key from private key
+Public key is derived from the private key. To generate public key from private key:
 ```bash
 wg pubkey < /etc/wireguard/private.key | sudo tee /etc/wireguard/public.key > /dev/null
 ```
@@ -113,7 +118,7 @@ Endpoint = <SERVER_IP>:51820
 ```
 > **Warning:** If you do not specify a DNS server, your DNS requests will use the system's default DNS and may not be secured by the VPN.
 
-Note: On modern Debian/Ubuntu, systemd-resolved usually handles DNS. If it’s not installed or active, WireGuard may fail to start. To fix this install resolvconf:
+Note: On Debian/Ubuntu, systemd-resolved usually manages DNS. If not running, you may need resolvconf. Install only if WireGuard complains about DNS setup.
 ```
 sudo apt install resolvconf
 ```
@@ -149,7 +154,7 @@ sudo systemctl restart wg-quick@wg0
 Whether you need forwarding depends on how you configure `AllowedIPs` in the client:
 
 * **Peer-to-Peer (`10.0.0.1/32`)** → No forwarding required. Client can only talk to the server’s VPN IP.
-* **LAN-Only (`10.0.0.0/24`)** → No Internet access needed, only other VPN clients. Forwarding is *not* required.
+* **LAN-Only (`10.0.0.0/24`)** → Clients can communicate with each other inside the VPN. IPv4 forwarding is required on the server so it can route traffic between clients.
 * **Full Tunnel (`0.0.0.0/0`)** → Client sends all Internet traffic through the server. Forwarding **is required** on the server to route packets out to the Internet.
 
 To enable IPv4 forwarding and NAT automatically when WireGuard starts, add these lines to the `[Interface]` section of the server config (`wg0.conf`):
@@ -197,9 +202,7 @@ Client talks only to the server’s VPN address.
 Client can reach all devices inside the VPN subnet.
 
 ```
-[Client] <--- WireGuard ---> [Server]
-     |                            |
-     +----> Other VPN Clients <---+
+[Client A] <--- WireGuard ---> [Server] ---> [Client B]
 ```
 
 **3. Full Tunnel (`AllowedIPs = 0.0.0.0/0`)**
