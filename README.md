@@ -41,14 +41,21 @@ sudo apt update && sudo apt install wireguard -y
 
 ### Step 2: Generate WireGuard Keys
 On both server and client(s):  
-Generate private key with restrictive permissions
+Generate private key and restrict access:
 ```bash
-(umask 077 && wg genkey | sudo tee /etc/wireguard/private.key > /dev/null)
+wg genkey | sudo tee /etc/wireguard/private.key > /dev/null
 ```
-Public key is derived from the private key. To generate public key from private key:
+```
+sudo chmod 600 /etc/wireguard/private.key # restrict access
+```
+
+> **Warning:** Never share the private key.
+
+Generate public key from private key:
 ```bash
 wg pubkey < /etc/wireguard/private.key | sudo tee /etc/wireguard/public.key > /dev/null
 ```
+
 Explanation:
 This will generate WireGuard private and public keys in /etc/wireguard and set the private key’s permissions to be readable only by root.
 Redirecting output to /dev/null prevents your private key from being exposed in the terminal.
@@ -108,7 +115,7 @@ Edit the client configuration file at `/etc/wireguard/wg0.conf`:
 ```ini
 [Interface]
 PrivateKey = <PEER_PRIVATE_KEY>
-Address = 10.0.0.2/24
+Address = 10.0.0.2/32
 DNS = <DNS> # optional
 
 [Peer]
