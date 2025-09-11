@@ -108,17 +108,18 @@ DNS = <DNS> # optional
 
 [Peer]
 PublicKey = <SERVER_PUBLIC_KEY>
-AllowedIPs = 10.0.0.1/32
+AllowedIPs = 10.0.0.1/32 # peer-to-peer only mode
 Endpoint = <SERVER_IP>:51820
 ```
 > **Warning:** If you do not specify a DNS server, your DNS requests will use the system's default DNS and may not be secured by the VPN.
 
-Note: DNS entries in a WireGuard config are handled by wg-quick, not WireGuard itself. On Debian/Ubuntu, this requires resolvconf (or systemd-resolved). If missing, WireGuard may fail to start. To fix this:
+Note: On modern Debian/Ubuntu, systemd-resolved usually handles DNS. If it’s not installed or active, WireGuard may fail to start. To fix this install resolvconf:
 ```
 sudo apt install resolvconf
 ```
 - **DNS:** You can use your own or public DNS servers like 1.1.1.1 (Cloudflare), 8.8.8.8 (Google), or 9.9.9.9 (Quad9).
 - **Address:** Set this to 10.0.0.2/32 (the address assigned in the WireGuard server).
+- **AllowedIPs:** 10.0.0.1/32 is peer-to-peer only mode. For more options see section below: Enable IPv4 Forwarding
 - **PersistentKeepalive:** Add this line in the peer section if the connection breaks:
   ```ini
   PersistentKeepalive = 25
@@ -157,10 +158,15 @@ To enable IPv4 forwarding and NAT automatically when WireGuard starts, add these
 PostUp   = sysctl -w net.ipv4.ip_forward=1
 PostUp   = nft list table inet nat >/dev/null 2>&1 || nft add table inet nat
 PostUp   = nft list chain inet nat postrouting >/dev/null 2>&1 || nft add chain inet nat postrouting { type nat hook postrouting priority 100 \; }
-PostUp   = nft add rule inet nat postrouting oif "eth0" masquerade
+PostUp   = nft add rule inet nat postrouting oif "<WAN_INTERFACE>" masquerade
 
 PostDown = sysctl -w net.ipv4.ip_forward=0
-PostDown = nft delete rule inet nat postrouting oif "eth0" masquerade
+PostDown = nft delete rule inet nat postrouting oif "<WAN_INTERFACE>" masquerade
+```
+Note: Replace <WAN_INTERFACE> with the name of your server’s external network interface (e.g., eth0, ens3, or enp0s3).
+You can find it with:
+```
+ip route | grep default
 ```
 
 This enables IPv4 forwarding only while WireGuard is active.
