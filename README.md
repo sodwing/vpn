@@ -165,11 +165,9 @@ PostDown = nft delete rule inet nat postrouting oif "eth0" masquerade
 
 This enables IPv4 forwarding only while WireGuard is active.
 
-If your server also runs Docker, Kubernetes, or other VPNs, it is safer to enable forwarding permanently instead of toggling it in PostUp/PostDown:
-
+If IPv4 forwarding is already enabled on the system, the server might already be using it. In that case, remove the postup/postdown IPv4 forwarding commands from the configuration. You can verify the current setting with:
 ```
-echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
-sudo sysctl -p
+cat /proc/sys/net/ipv4/ip_forward
 ```
 
 ---
