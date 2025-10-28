@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# nftables-based WireGuard killswitch
+# nftables-based WireGuard killswitch (Fedora-compatible)
 # Usage:
 #   ./wg-killswitch.sh enable
 #   ./wg-killswitch.sh disable
@@ -10,7 +10,14 @@
 WG_CONF="/etc/wireguard/wg0.conf"
 WG_INTERFACE="wg0"
 
-# Extract server endpoint (IP:PORT) from wg0.conf
+# Detect correct nftables persistent config path
+if [ -f /etc/sysconfig/nftables.conf ] || grep -qi "fedora" /etc/os-release 2>/dev/null; then
+    NFT_PERSIST_CONF="/etc/sysconfig/nftables.conf"
+else
+    NFT_PERSIST_CONF="/etc/nftables.conf"
+fi
+
+# Extract server endpoint (IP:PORT)
 ENDPOINT=$(sudo grep -m1 '^Endpoint' "$WG_CONF" | awk '{print $3}')
 VPN_SERVER_IP=$(echo "$ENDPOINT" | cut -d: -f1)
 VPN_PORT=$(echo "$ENDPOINT" | cut -d: -f2)
@@ -56,14 +63,15 @@ disable_killswitch() {
 
 persist_killswitch() {
     echo "[*] Saving current nftables rules for persistence..."
-    sudo nft list ruleset | sudo tee /etc/nftables.conf > /dev/null
+    # Remove the top "flush ruleset" line (Fedora's nftables service rejects it)
+    sudo nft list ruleset | grep -v '^flush ruleset' | sudo tee "$NFT_PERSIST_CONF" > /dev/null
     sudo systemctl enable nftables
-    echo "[+] Rules saved to /etc/nftables.conf and nftables service enabled."
+    echo "[+] Rules saved to $NFT_PERSIST_CONF and nftables service enabled."
 }
 
 unpersist_killswitch() {
     echo "[*] Removing persistent nftables rules..."
-    echo "flush ruleset" | sudo tee /etc/nftables.conf > /dev/null
+    echo "flush ruleset" | sudo tee "$NFT_PERSIST_CONF" > /dev/null
     sudo systemctl disable nftables
     echo "[+] Persistence removed. nftables service disabled."
 }
@@ -78,8 +86,8 @@ status_killswitch() {
     fi
 
     if systemctl is-enabled --quiet nftables 2>/dev/null; then
-        if grep -q "vpnfw" /etc/nftables.conf; then
-            echo "[+] Persistent: Yes (vpnfw rules saved in /etc/nftables.conf)"
+        if sudo grep -q "vpnfw" "$NFT_PERSIST_CONF" 2>/dev/null; then
+            echo "[+] Persistent: Yes (vpnfw rules saved in $NFT_PERSIST_CONF)"
         else
             echo "[-] Persistent: No (nftables enabled but no vpnfw rules)"
         fi
