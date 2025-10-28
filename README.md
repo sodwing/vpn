@@ -220,3 +220,11 @@ All of the client’s traffic (Internet included) goes through the VPN server.
 ```
 
 ---
+### FAQ
+
+**1. Permission error when starting WireGuard**  
+If wg-quick fails to start because of a permission/SELinux issue for the config file, run:
+```
+sudo restorecon -v /etc/wireguard/wg0.conf
+```
+This restores the SELinux security context on the config file. Then retry starting WireGuard (e.g., sudo systemctl restart wg-quick@wg0).
